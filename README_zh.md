@@ -177,8 +177,7 @@ qoc/
 │       ├── __main__.py          # 命令行入口
 │       ├── models.py            # 数据模型
 │       ├── analyzer.py          # 核心分析器
-│       └── cli.py              # 命令行界面
-├── examples/                    # 示例文件
+│       └── cli.py               # 命令行界面
 ├── config.json                  # 配置文件
 ├── requirements.txt             # Python依赖
 └── README.md                    # 项目说明

@@ -27,5 +27,6 @@ class QOCResult:
     language: str
     total_qoc: float
     ast_nodes: int
-    lines_of_code: int
+    sloc: int  # Source Lines of Code (excluding empty lines and comments)
+    loc: int = 0  # Lines of Code (including empty lines and comments)
     node_stats: Optional[Dict[str, NodeInfo]] = None 

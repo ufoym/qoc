@@ -86,7 +86,8 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
             'summary': {
                 'total_files': len(results),
                 'total_qoc': sum(r.total_qoc for r in results),
-                'total_lines': sum(r.lines_of_code for r in results),
+                'total_loc': sum(r.loc for r in results),  # Lines of Code (including empty lines)
+                'total_sloc': sum(r.sloc for r in results),  # Source Lines of Code (excluding empty lines)
                 'total_nodes': sum(r.ast_nodes for r in results)
             },
             'files': []
@@ -97,7 +98,8 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
                 'filepath': result.filepath,
                 'language': result.language,
                 'qoc': result.total_qoc,
-                'lines_of_code': result.lines_of_code,
+                'loc': result.loc,  # Lines of Code
+                'sloc': result.sloc,  # Source Lines of Code
                 'ast_nodes': result.ast_nodes
             }
             
@@ -125,16 +127,17 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
         if output:
             with open(output, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(['Filename', 'Language', 'QOC', 'AST Nodes', 'Lines of Code', 'QOC/LOC Ratio'])
+                writer.writerow(['Filename', 'Language', 'QOC', 'AST Nodes', 'LOC', 'SLOC', 'QOC/SLOC Ratio'])
                 
                 for result in results:
-                    ratio = result.total_qoc / result.lines_of_code if result.lines_of_code > 0 else 0
+                    ratio = result.total_qoc / result.sloc if result.sloc > 0 else 0
                     writer.writerow([
                         result.filepath,
                         result.language,
                         f"{result.total_qoc:.1f}",
                         result.ast_nodes,
-                        result.lines_of_code,
+                        result.loc,
+                        result.sloc,
                         f"{ratio:.2f}"
                     ])
             console.print(f"[green]CSV results saved to: {output}[/green]")
@@ -162,7 +165,8 @@ def compare(file1: str, file2: str):
     
     # Calculate differences
     qoc_diff = result2.total_qoc - result1.total_qoc
-    lines_diff = result2.lines_of_code - result1.lines_of_code
+    sloc_diff = result2.sloc - result1.sloc
+    loc_diff = result2.loc - result1.loc
     nodes_diff = result2.ast_nodes - result1.ast_nodes
     
     # Create comparison table
@@ -180,17 +184,24 @@ def compare(file1: str, file2: str):
     )
     
     table.add_row(
-        "Quanta of Code (QOC)",
+        "QOC (Quanta of Code)",
         f"{result1.total_qoc:.1f}",
         f"{result2.total_qoc:.1f}",
         f"{qoc_diff:+.1f}"
     )
     
     table.add_row(
-        "Lines of Code",
-        str(result1.lines_of_code),
-        str(result2.lines_of_code),
-        f"{lines_diff:+d}"
+        "LOC (Lines of Code)",
+        str(result1.loc),
+        str(result2.loc),
+        f"{loc_diff:+d}"
+    )
+    
+    table.add_row(
+        "SLOC (Source Lines of Code)",
+        str(result1.sloc),
+        str(result2.sloc),
+        f"{sloc_diff:+d}"
     )
     
     table.add_row(
@@ -201,12 +212,12 @@ def compare(file1: str, file2: str):
     )
     
     # Calculate efficiency ratios
-    ratio1 = result1.total_qoc / result1.lines_of_code if result1.lines_of_code > 0 else 0
-    ratio2 = result2.total_qoc / result2.lines_of_code if result2.lines_of_code > 0 else 0
+    ratio1 = result1.total_qoc / result1.sloc if result1.sloc > 0 else 0
+    ratio2 = result2.total_qoc / result2.sloc if result2.sloc > 0 else 0
     ratio_diff = ratio2 - ratio1
     
     table.add_row(
-        "Efficiency Ratio",
+        "Efficiency Ratio (QOC/SLOC)",
         f"{ratio1:.2f}",
         f"{ratio2:.2f}",
         f"{ratio_diff:+.2f}"
@@ -230,7 +241,7 @@ def compare(file1: str, file2: str):
 def demo():
     """Demonstrate QOC functionality
     
-    Analyze example files in current directory to showcase QOC tool capabilities
+    Analyze all supported files in current directory to showcase QOC tool capabilities
     """
     
     console.print(
@@ -247,36 +258,27 @@ def demo():
     
     analyzer = QOCAnalyzer()
     
-    # Find example files in current directory
-    current_dir = Path(".")
-    example_files = []
+    # Analyze current directory
+    console.print("\n[bold]📁 Analyzing current directory...[/bold]")
+    results = analyzer.analyze_directory(".", recursive=False)
     
-    for pattern in ["*.py", "*.js", "*.java", "*.cpp"]:
-        example_files.extend(current_dir.glob(pattern))
-    
-    if not example_files:
-        console.print("\n[yellow]No example files found in current directory.[/yellow]")
-        console.print("\n[bold]Try creating some example files or run:[/bold]")
+    if not results:
+        console.print("\n[yellow]No supported files found in current directory.[/yellow]")
+        console.print("\n[bold]Try creating some code files or run:[/bold]")
         console.print("  qoc analyze <file_path>")
         console.print("  qoc analyze <directory> -r")
         console.print("  qoc compare <file1> <file2>")
         return
     
-    console.print(f"\n[bold green]Found {len(example_files)} example files:[/bold green]")
+    console.print(f"\n[bold green]Found {len(results)} supported files:[/bold green]")
+    for result in results:
+        console.print(f"✅ {result.filepath}")
     
-    results = []
-    for file_path in example_files[:5]:  # Analyze first 5 files
-        result = analyzer.analyze_file(str(file_path))
-        if result:
-            results.append(result)
-            console.print(f"✅ {file_path.name}")
+    console.print(f"\n[bold cyan]Analysis Complete![/bold cyan]")
+    analyzer.print_summary(results)
     
-    if results:
-        console.print(f"\n[bold cyan]Analysis Complete![/bold cyan]")
-        analyzer.print_summary(results)
-        
-        console.print(f"\n[bold]📖 Next Steps:[/bold]")
-        console.print("""
+    console.print(f"\n[bold]📖 Next Steps:[/bold]")
+    console.print("""
 [bold cyan]QOC - Quanta of Code Tool[/bold cyan]
 
 Basic Commands:

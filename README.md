@@ -178,7 +178,6 @@ qoc/
 │       ├── models.py            # Data models
 │       ├── analyzer.py          # Core analyzer
 │       └── cli.py               # Command line interface
-├── examples/                    # Example files
 ├── config.json                  # Configuration file
 ├── requirements.txt             # Python dependencies
 └── README.md                    # Project documentation

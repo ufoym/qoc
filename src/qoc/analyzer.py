@@ -94,16 +94,22 @@ class QOCAnalyzer:
         
         return extension_map.get(ext)
     
-    def _get_file_lines(self, filepath: str) -> int:
-        """Calculate file lines (excluding empty lines)"""
+    def _get_file_lines(self, filepath: str) -> tuple[int, int]:
+        """Calculate file lines - returns (loc, sloc)
+        
+        Returns:
+            tuple: (LOC - lines including empty lines and comments, SLOC - source lines excluding empty lines)
+        """
         try:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
-                # Only count non-empty lines
+                loc = len(lines)  # Lines of Code (including empty lines and comments)
+                # Only count non-empty lines for SLOC
                 non_empty_lines = [line for line in lines if line.strip()]
-                return len(non_empty_lines)
+                sloc = len(non_empty_lines)  # Source Lines of Code
+                return loc, sloc
         except Exception:
-            return 0
+            return 0, 0
     
     def _traverse_ast(self, node: Node, language: str, node_stats: Dict[str, NodeInfo]) -> None:
         """Recursively traverse AST nodes and calculate weights"""
@@ -153,16 +159,17 @@ class QOCAnalyzer:
             return None
         
         # Get lines of code
-        lines_of_code = self._get_file_lines(filepath)
+        loc, sloc = self._get_file_lines(filepath)
         
         if not source_code.strip():
             # Handle empty files
             return QOCResult(
                 filepath=filepath,
                 language=language,
-                total_qoc=lines_of_code,  # Temporarily use line count
+                total_qoc=0,  # Empty file has no QOC
                 ast_nodes=0,
-                lines_of_code=lines_of_code,
+                sloc=sloc,  # Source Lines of Code
+                loc=loc,  # Lines of Code
                 node_stats={}
             )
         
@@ -175,9 +182,10 @@ class QOCAnalyzer:
                 return QOCResult(
                     filepath=filepath,
                     language=language,
-                    total_qoc=lines_of_code,
+                    total_qoc=sloc,
                     ast_nodes=0,
-                    lines_of_code=lines_of_code,
+                    sloc=sloc,  # Source Lines of Code  
+                    loc=loc,  # Lines of Code
                     node_stats={}
                 )
             
@@ -194,7 +202,8 @@ class QOCAnalyzer:
                 language=language,
                 total_qoc=total_qoc,
                 ast_nodes=total_ast_nodes,
-                lines_of_code=lines_of_code,
+                sloc=sloc,  # Source Lines of Code
+                loc=loc,  # Lines of Code
                 node_stats=node_stats
             )
             
@@ -232,13 +241,14 @@ class QOCAnalyzer:
         """Print analysis result"""
         self.console.print(f"\n[bold green]📄 File:[/bold green] {result.filepath}")
         self.console.print(f"[bold blue]🔤 Language:[/bold blue] {result.language}")
-        self.console.print(f"[bold cyan]📏 Lines of Code:[/bold cyan] {result.lines_of_code}")
+        self.console.print(f"[bold cyan]📏 LOC:[/bold cyan] {result.loc}")
+        self.console.print(f"[bold cyan]📏 SLOC:[/bold cyan] {result.sloc}")
         
-        qoc_loc_ratio = result.total_qoc / result.lines_of_code if result.lines_of_code > 0 else 0
+        qoc_sloc_ratio = result.total_qoc / result.sloc if result.sloc > 0 else 0
         
         self.console.print(f"[bold magenta]⚡ Quanta of Code (QOC):[/bold magenta] {result.total_qoc:.1f}")
         self.console.print(f"[bold yellow]🌳 AST Nodes:[/bold yellow] {result.ast_nodes}")
-        self.console.print(f"[bold red]📊 Efficiency Ratio (QOC/LOC):[/bold red] {qoc_loc_ratio:.2f}")
+        self.console.print(f"[bold red]📊 Efficiency Ratio (QOC/SLOC):[/bold red] {qoc_sloc_ratio:.2f}")
         
         if detailed and result.node_stats:
             self.console.print("\n[bold]🔍 Detailed AST Node Analysis:[/bold]")
@@ -274,7 +284,8 @@ class QOCAnalyzer:
         
         total_files = len(results)
         total_qoc = sum(r.total_qoc for r in results)
-        total_loc = sum(r.lines_of_code for r in results)
+        total_sloc = sum(r.sloc for r in results)  # Source Lines of Code
+        total_loc = sum(r.loc for r in results)  # Lines of Code
         total_ast_nodes = sum(r.ast_nodes for r in results)
         
         # Language statistics
@@ -282,18 +293,20 @@ class QOCAnalyzer:
         for result in results:
             lang = result.language
             if lang not in language_stats:
-                language_stats[lang] = {'count': 0, 'qoc': 0, 'loc': 0}
+                language_stats[lang] = {'count': 0, 'qoc': 0, 'sloc': 0, 'loc': 0}
             language_stats[lang]['count'] += 1
             language_stats[lang]['qoc'] += result.total_qoc
-            language_stats[lang]['loc'] += result.lines_of_code
+            language_stats[lang]['sloc'] += result.sloc
+            language_stats[lang]['loc'] += result.loc
         
         # Create summary panel
         summary_text = f"""
 [bold cyan]Total Files:[/bold cyan] {total_files:,}
 [bold magenta]Total QOC:[/bold magenta] {total_qoc:,.1f}
-[bold blue]Total Lines of Code:[/bold blue] {total_loc:,}
+[bold blue]Total LOC:[/bold blue] {total_loc:,}
+[bold green]Total SLOC:[/bold green] {total_sloc:,}
 [bold yellow]Total AST Nodes:[/bold yellow] {total_ast_nodes:,}
-[bold red]Average Efficiency Ratio:[/bold red] {total_qoc/total_loc:.2f}
+[bold red]Average Efficiency Ratio:[/bold red] {total_qoc/total_sloc:.2f}
         """
         
         panel = Panel(
@@ -312,7 +325,8 @@ class QOCAnalyzer:
             lang_table.add_column("Files", style="magenta", justify="right")
             lang_table.add_column("QOC", style="yellow", justify="right")
             lang_table.add_column("LOC", style="blue", justify="right")
-            lang_table.add_column("Percentage", style="green", justify="right")
+            lang_table.add_column("SLOC", style="green", justify="right")
+            lang_table.add_column("Percentage", style="red", justify="right")
             
             for lang, stats in sorted(language_stats.items(), key=lambda x: x[1]['count'], reverse=True):
                 percentage = (stats['count'] / total_files) * 100
@@ -321,6 +335,7 @@ class QOCAnalyzer:
                     str(stats['count']),
                     f"{stats['qoc']:.1f}",
                     str(stats['loc']),
+                    str(stats['sloc']),
                     f"{percentage:.1f}%"
                 )
             
