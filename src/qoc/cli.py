@@ -2,86 +2,144 @@
 # -*- coding: utf-8 -*-
 """
 QOC - Quanta of Code Tool Command Line Interface
-Usage: python -m qoc analyze <path> [options]
+Usage: python -m qoc <command> [options]
 """
 
 import os
 import json
 import csv
+import sys
+import argparse
 from pathlib import Path
 from typing import List, Dict, Any
-import click
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
 
 from .analyzer import QOCAnalyzer
 from .models import QOCResult
 
-console = Console()
 
-@click.group()
-@click.version_option(version="1.0.0", prog_name="QOC")
-def main():
-    """🚀 QOC - Quanta of Code Analysis Tool
-    
-    Analyze real code contribution, programming style-independent contribution measurement
-    
-    Supported programming languages:
-    - Python (.py)
-    - JavaScript/TypeScript (.js, .jsx, .ts, .tsx)  
-    - Java (.java)
-    - C++ (.cpp, .cc, .cxx, .hpp, .h, .hxx)
-    """
-    pass
+def create_parser():
+    """Create command line argument parser"""
+    parser = argparse.ArgumentParser(
+        prog='qoc',
+        description='🚀 QOC - Quanta of Code Analysis Tool\n\nAnalyze real code contribution, programming style-independent contribution measurement',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Supported programming languages:
+  • Python (.py)
+  • JavaScript/TypeScript (.js, .jsx, .ts, .tsx)  
+  • Java (.java)
+  • C++ (.cpp, .cc, .cxx, .hpp, .h, .hxx)
 
-@main.command()
-@click.argument('path', type=click.Path(exists=True))
-@click.option('-r', '--recursive', is_flag=True, help='Recursively analyze subdirectories')
-@click.option('-d', '--detailed', is_flag=True, help='Show detailed AST node statistics')
-@click.option('-o', '--output', type=click.Path(), help='Output results to file')
-@click.option('--format', type=click.Choice(['console', 'json', 'csv']), default='console', help='Output format')
-def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str):
-    """Analyze Quanta of Code (QOC)
+Examples:
+  qoc analyze file.py                    # Analyze single file
+  qoc analyze ./src -r                   # Recursively analyze directory
+  qoc analyze ./src -r -d               # Show detailed information
+  qoc analyze ./src -o report.json      # Output to file
+  qoc compare old.py new.py              # Compare two files
+  qoc demo                               # Run demo
+        '''
+    )
     
-    PATH: File or directory path to analyze
+    parser.add_argument(
+        '--version', 
+        action='version', 
+        version='QOC 1.0.0'
+    )
     
-    Examples:
-    qoc analyze file.py                    # Analyze single file
-    qoc analyze ./src -r                   # Recursively analyze directory
-    qoc analyze ./src -r -d               # Show detailed information
-    qoc analyze ./src -o report.json      # Output to file
-    """
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Analyze command
+    analyze_parser = subparsers.add_parser(
+        'analyze',
+        help='Analyze Quanta of Code (QOC)',
+        description='Analyze code contribution using Abstract Syntax Tree (AST) analysis'
+    )
+    analyze_parser.add_argument(
+        'path',
+        help='File or directory path to analyze'
+    )
+    analyze_parser.add_argument(
+        '-r', '--recursive',
+        action='store_true',
+        help='Recursively analyze subdirectories'
+    )
+    analyze_parser.add_argument(
+        '-d', '--detailed',
+        action='store_true',
+        help='Show detailed AST node statistics'
+    )
+    analyze_parser.add_argument(
+        '-o', '--output',
+        help='Output results to file'
+    )
+    analyze_parser.add_argument(
+        '--format',
+        choices=['console', 'json', 'csv'],
+        default='console',
+        help='Output format (default: console)'
+    )
+    
+    # Compare command
+    compare_parser = subparsers.add_parser(
+        'compare',
+        help='Compare QOC differences between two files',
+        description='Compare code complexity between two files'
+    )
+    compare_parser.add_argument(
+        'file1',
+        help='First file to compare'
+    )
+    compare_parser.add_argument(
+        'file2',
+        help='Second file to compare'
+    )
+    
+    # Demo command
+    demo_parser = subparsers.add_parser(
+        'demo',
+        help='Demonstrate QOC functionality',
+        description='Analyze code files to showcase QOC tool capabilities'
+    )
+    
+    return parser
+
+
+def analyze_command(args):
+    """Handle analyze command"""
+    # Check if path exists
+    if not os.path.exists(args.path):
+        print(f"❌ Error: Path does not exist: {args.path}")
+        return 1
     
     analyzer = QOCAnalyzer()
     
-    if os.path.isfile(path):
+    if os.path.isfile(args.path):
         # Analyze single file
-        result = analyzer.analyze_file(path)
+        result = analyzer.analyze_file(args.path)
         if result:
             results = [result]
         else:
-            console.print("[red]Analysis failed[/red]")
-            return
+            print("❌ Analysis failed")
+            return 1
     else:
         # Analyze directory
-        results = analyzer.analyze_directory(path, recursive)
+        results = analyzer.analyze_directory(args.path, args.recursive)
         if not results:
-            console.print("[yellow]No supported files found[/yellow]")
-            return
+            print("⚠️  No supported files found")
+            return 1
     
-    if format == 'console':
+    if args.format == 'console':
         if len(results) == 1:
-            analyzer.print_result(results[0], detailed)
+            analyzer.print_result(results[0], args.detailed)
         else:
             analyzer.print_summary(results)
-            if detailed:
-                console.print("\n[bold]Detailed Results:[/bold]")
+            if args.detailed:
+                print("\n🔍 Detailed Results:")
                 for result in results:
-                    console.print(f"\n[dim]{'='*60}[/dim]")
-                    analyzer.print_result(result, detailed)
+                    print(f"\n{'='*60}")
+                    analyzer.print_result(result, args.detailed)
     
-    elif format == 'json':
+    elif args.format == 'json':
         output_data = {
             'summary': {
                 'total_files': len(results),
@@ -103,7 +161,7 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
                 'ast_nodes': result.ast_nodes
             }
             
-            if detailed and result.node_stats:
+            if args.detailed and result.node_stats:
                 file_data['node_stats'] = {}
                 for node_type, node_info in result.node_stats.items():
                     file_data['node_stats'][node_type] = {
@@ -116,16 +174,16 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
         
         json_output = json.dumps(output_data, indent=2, ensure_ascii=False)
         
-        if output:
-            with open(output, 'w', encoding='utf-8') as f:
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
                 f.write(json_output)
-            console.print(f"[green]Results saved to: {output}[/green]")
+            print(f"✅ Results saved to: {args.output}")
         else:
-            console.print(json_output)
+            print(json_output)
     
-    elif format == 'csv':
-        if output:
-            with open(output, 'w', newline='', encoding='utf-8') as csvfile:
+    elif args.format == 'csv':
+        if args.output:
+            with open(args.output, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(['Filename', 'Language', 'QOC', 'AST Nodes', 'LOC', 'SLOC', 'QOC/SLOC Ratio'])
                 
@@ -140,28 +198,33 @@ def analyze(path: str, recursive: bool, detailed: bool, output: str, format: str
                         result.sloc,
                         f"{ratio:.2f}"
                     ])
-            console.print(f"[green]CSV results saved to: {output}[/green]")
+            print(f"✅ CSV results saved to: {args.output}")
         else:
-            console.print("[red]CSV format requires output file (-o)[/red]")
-
-@main.command()
-@click.argument('file1', type=click.Path(exists=True))
-@click.argument('file2', type=click.Path(exists=True))
-def compare(file1: str, file2: str):
-    """Compare QOC differences between two files
+            print("❌ CSV format requires output file (-o)")
+            return 1
     
-    Examples:
-    qoc compare old_version.py new_version.py
-    """
+    return 0
+
+
+def compare_command(args):
+    """Handle compare command"""
+    # Check if files exist
+    if not os.path.exists(args.file1):
+        print(f"❌ Error: File does not exist: {args.file1}")
+        return 1
+    
+    if not os.path.exists(args.file2):
+        print(f"❌ Error: File does not exist: {args.file2}")
+        return 1
     
     analyzer = QOCAnalyzer()
     
-    result1 = analyzer.analyze_file(file1)
-    result2 = analyzer.analyze_file(file2)
+    result1 = analyzer.analyze_file(args.file1)
+    result2 = analyzer.analyze_file(args.file2)
     
     if not result1 or not result2:
-        console.print("[red]Analysis failed[/red]")
-        return
+        print("❌ Analysis failed")
+        return 1
     
     # Calculate differences
     qoc_diff = result2.total_qoc - result1.total_qoc
@@ -169,64 +232,27 @@ def compare(file1: str, file2: str):
     loc_diff = result2.loc - result1.loc
     nodes_diff = result2.ast_nodes - result1.ast_nodes
     
-    # Create comparison table
-    table = Table(title="File Comparison Results")
-    table.add_column("Metric", style="cyan")
-    table.add_column("File 1", style="green")
-    table.add_column("File 2", style="blue")
-    table.add_column("Difference", style="yellow")
-    
-    table.add_row(
-        "File Path",
-        str(result1.filepath),
-        str(result2.filepath),
-        "-"
-    )
-    
-    table.add_row(
-        "QOC (Quanta of Code)",
-        f"{result1.total_qoc:.1f}",
-        f"{result2.total_qoc:.1f}",
-        f"{qoc_diff:+.1f}"
-    )
-    
-    table.add_row(
-        "LOC (Lines of Code)",
-        str(result1.loc),
-        str(result2.loc),
-        f"{loc_diff:+d}"
-    )
-    
-    table.add_row(
-        "SLOC (Source Lines of Code)",
-        str(result1.sloc),
-        str(result2.sloc),
-        f"{sloc_diff:+d}"
-    )
-    
-    table.add_row(
-        "AST Node Count",
-        str(result1.ast_nodes),
-        str(result2.ast_nodes),
-        f"{nodes_diff:+d}"
-    )
+    # Display comparison results
+    print("\n📊 File Comparison Results")
+    print("=" * 60)
+    print(f"{'Metric':<25} {'File 1':<15} {'File 2':<15} {'Difference':<15}")
+    print("=" * 60)
+    print(f"{'File Path':<25} {str(result1.filepath):<15} {str(result2.filepath):<15} {'-':<15}")
+    print(f"{'QOC':<25} {result1.total_qoc:<15.1f} {result2.total_qoc:<15.1f} {qoc_diff:<+15.1f}")
+    print(f"{'LOC':<25} {result1.loc:<15} {result2.loc:<15} {loc_diff:<+15}")
+    print(f"{'SLOC':<25} {result1.sloc:<15} {result2.sloc:<15} {sloc_diff:<+15}")
+    print(f"{'AST Nodes':<25} {result1.ast_nodes:<15} {result2.ast_nodes:<15} {nodes_diff:<+15}")
     
     # Calculate efficiency ratios
     ratio1 = result1.total_qoc / result1.sloc if result1.sloc > 0 else 0
     ratio2 = result2.total_qoc / result2.sloc if result2.sloc > 0 else 0
     ratio_diff = ratio2 - ratio1
     
-    table.add_row(
-        "Efficiency Ratio (QOC/SLOC)",
-        f"{ratio1:.2f}",
-        f"{ratio2:.2f}",
-        f"{ratio_diff:+.2f}"
-    )
-    
-    console.print(table)
+    print(f"{'Efficiency Ratio':<25} {ratio1:<15.2f} {ratio2:<15.2f} {ratio_diff:<+15.2f}")
+    print("=" * 60)
     
     # Analysis conclusion
-    console.print("\n[bold]Analysis Conclusion:[/bold]")
+    print("\n🔍 Analysis Conclusion:")
     
     if qoc_diff > 0:
         conclusion = f"File 2's code complexity increased by {qoc_diff:.1f} QOC"
@@ -235,57 +261,61 @@ def compare(file1: str, file2: str):
     else:
         conclusion = "Both files have similar code complexity"
     
-    console.print(conclusion)
+    print(conclusion)
+    return 0
 
-@main.command()
-def demo():
-    """Demonstrate QOC functionality
-    
-    Analyze all supported files in current directory to showcase QOC tool capabilities
-    """
-    
-    console.print(
-        "[bold blue]🚀 QOC Demo Mode[/bold blue]\n\n"
-        "This is a demonstration mode that shows how QOC analyzes code contribution across different programming languages.\n"
-    )
-    
-    panel = Panel(
-        title="Welcome to QOC",
-        border_style="bright_blue",
-        renderable="QOC analyzes Abstract Syntax Trees (AST) to provide\nmore accurate code contribution assessment than traditional line counting.\n\nSupports Python, JavaScript, Java, C++, and more languages."
-    )
-    console.print(panel)
+
+def demo_command(args):
+    """Handle demo command"""
+    print("🚀 QOC Demo\n")
+    print("Demonstrating QOC analysis capabilities...\n")
     
     analyzer = QOCAnalyzer()
     
-    # Analyze current directory
-    console.print("\n[bold]📁 Analyzing current directory...[/bold]")
-    results = analyzer.analyze_directory(".", recursive=False)
+    # Check if src directory exists
+    src_path = "src"
+    if not os.path.exists(src_path):
+        print("⚠️  src directory not found. Using current directory instead.")
+        src_path = "."
+    
+    print(f"📁 Analyzing {src_path} directory...")
+    results = analyzer.analyze_directory(src_path, recursive=True)
     
     if not results:
-        console.print("\n[yellow]No supported files found in current directory.[/yellow]")
-        console.print("\n[bold]Try creating some code files or run:[/bold]")
-        console.print("  qoc analyze <file_path>")
-        console.print("  qoc analyze <directory> -r")
-        console.print("  qoc compare <file1> <file2>")
-        return
+        print("⚠️  No supported files found.")
+        return 1
     
-    console.print(f"\n[bold green]Found {len(results)} supported files:[/bold green]")
+    print(f"✅ Found {len(results)} files\n")
+    
+    # Display file analysis results in table format
+    print("📊 File Analysis Results:")
+    print("=" * 80)
+    print(f"{'File':<30} {'Lang':<10} {'QOC':<8} {'LOC':<6} {'SLOC':<6} {'AST':<6} {'Ratio':<6}")
+    print("=" * 80)
+    
     for result in results:
-        console.print(f"✅ {result.filepath}")
+        # Truncate long file paths for better display
+        filepath = result.filepath
+        if len(filepath) > 34:
+            filepath = "..." + filepath[-31:]
+        
+        ratio = result.total_qoc / result.sloc if result.sloc > 0 else 0
+        
+        print(f"{filepath:<30} {result.language:<10} {result.total_qoc:<8.1f} {result.loc:<6} {result.sloc:<6} {result.ast_nodes:<6} {ratio:<6.2f}")
     
-    console.print(f"\n[bold cyan]Analysis Complete![/bold cyan]")
+    print("=" * 80)
+    print()
+    
+    # Show summary
     analyzer.print_summary(results)
     
-    console.print(f"\n[bold]📖 Next Steps:[/bold]")
-    console.print("""
-[bold cyan]QOC - Quanta of Code Tool[/bold cyan]
+    print("\n📖 Try these commands:")
+    print("  qoc analyze <file>          # Analyze single file")
+    print("  qoc analyze <directory> -r  # Recursively analyze directory")
+    print("  qoc compare <file1> <file2> # Compare two files")
+    
+    return 0
 
-Basic Commands:
-qoc analyze <file>          # Analyze single file
-qoc analyze <directory> -r  # Recursively analyze directory
-qoc compare <file1> <file2> # Compare two files
-""")
 
 def load_config():
     """Load configuration file"""
@@ -294,11 +324,42 @@ def load_config():
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        console.print(f"[red]Error: Configuration file not found: {config_path}[/red]")
+        print(f"❌ Error: Configuration file not found: {config_path}")
         return None
     except json.JSONDecodeError as e:
-        console.print(f"[red]Error: Invalid JSON in configuration file: {e}[/red]")
+        print(f"❌ Error: Invalid JSON in configuration file: {e}")
         return None
 
+
+def main():
+    """Main entry point"""
+    parser = create_parser()
+    
+    # If no arguments provided, show help
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return 0
+    
+    args = parser.parse_args()
+    
+    # Execute the appropriate command
+    try:
+        if args.command == 'analyze':
+            return analyze_command(args)
+        elif args.command == 'compare':
+            return compare_command(args)
+        elif args.command == 'demo':
+            return demo_command(args)
+        else:
+            parser.print_help()
+            return 1
+    except KeyboardInterrupt:
+        print("\n⚠️  Operation interrupted by user")
+        return 1
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return 1
+
+
 if __name__ == '__main__':
-    main() 
+    sys.exit(main()) 

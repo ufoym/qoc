@@ -10,10 +10,7 @@ Fully based on Tree-sitter AST parsing
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
+from typing import Dict, Any, List, Tuple, Optional, TYPE_CHECKING
 
 from .models import NodeInfo, QOCResult
 
@@ -27,14 +24,15 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
+    # For type checking when tree-sitter is not available
+    if TYPE_CHECKING:
+        from tree_sitter import Node
 
 
 class QOCAnalyzer:
     """QOC (Quanta of Code) Analyzer"""
     
     def __init__(self, config_path: str = None):
-        self.console = Console()
-        
         # Get configuration file path
         if config_path is None:
             config_path = Path(__file__).parent.parent.parent / "config.json"
@@ -52,6 +50,10 @@ class QOCAnalyzer:
     
     def _init_languages(self):
         """Initialize Tree-sitter language parsers"""
+        if not TREE_SITTER_AVAILABLE:
+            print("⚠️  Warning: Tree-sitter not available. Install tree-sitter packages.")
+            return
+            
         language_configs = {
             'python': tspython,
             'javascript': tsjavascript,
@@ -70,7 +72,7 @@ class QOCAnalyzer:
                 self.parsers[lang_name] = parser
                 
             except Exception as e:
-                self.console.print(f"[yellow]Warning: Cannot initialize {lang_name} parser: {e}[/yellow]")
+                print(f"⚠️  Warning: Cannot initialize {lang_name} parser: {e}")
     
     def _get_language_from_extension(self, filepath: str) -> Optional[str]:
         """Determine programming language from file extension"""
@@ -111,7 +113,7 @@ class QOCAnalyzer:
         except Exception:
             return 0, 0
     
-    def _traverse_ast(self, node: Node, language: str, node_stats: Dict[str, NodeInfo]) -> None:
+    def _traverse_ast(self, node, language: str, node_stats: Dict[str, NodeInfo]) -> None:
         """Recursively traverse AST nodes and calculate weights"""
         node_type = node.type
         
@@ -137,17 +139,17 @@ class QOCAnalyzer:
     def analyze_file(self, filepath: str) -> Optional[QOCResult]:
         """Analyze QOC (Quanta of Code) of a single file"""
         if not os.path.exists(filepath):
-            self.console.print(f"[red]Error: File does not exist {filepath}[/red]")
+            print(f"❌ Error: File does not exist {filepath}")
             return None
         
         # Determine programming language
         language = self._get_language_from_extension(filepath)
         if not language:
-            self.console.print(f"[yellow]Warning: Unsupported file type {filepath}[/yellow]")
+            print(f"⚠️  Warning: Unsupported file type {filepath}")
             return None
         
         if language not in self.parsers:
-            self.console.print(f"[yellow]Warning: {language} parser not initialized[/yellow]")
+            print(f"⚠️  Warning: {language} parser not initialized")
             return None
         
         # Read file content
@@ -155,7 +157,7 @@ class QOCAnalyzer:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 source_code = f.read()
         except Exception as e:
-            self.console.print(f"[red]Error: Cannot read file {filepath}: {e}[/red]")
+            print(f"❌ Error: Cannot read file {filepath}: {e}")
             return None
         
         # Get lines of code
@@ -208,7 +210,7 @@ class QOCAnalyzer:
             )
             
         except Exception as e:
-            self.console.print(f"[red]Error analyzing file {filepath}: {e}[/red]")
+            print(f"❌ Error analyzing file {filepath}: {e}")
             return None
     
     def analyze_directory(self, directory: str, recursive: bool = False) -> List[QOCResult]:
@@ -217,7 +219,7 @@ class QOCAnalyzer:
         
         directory_path = Path(directory)
         if not directory_path.exists():
-            self.console.print(f"[red]Error: Directory does not exist {directory}[/red]")
+            print(f"❌ Error: Directory does not exist {directory}")
             return results
         
         # Get all files
@@ -239,26 +241,22 @@ class QOCAnalyzer:
     
     def print_result(self, result: QOCResult, detailed: bool = False):
         """Print analysis result"""
-        self.console.print(f"\n[bold green]📄 File:[/bold green] {result.filepath}")
-        self.console.print(f"[bold blue]🔤 Language:[/bold blue] {result.language}")
-        self.console.print(f"[bold cyan]📏 LOC:[/bold cyan] {result.loc}")
-        self.console.print(f"[bold cyan]📏 SLOC:[/bold cyan] {result.sloc}")
+        print(f"\n📄 File: {result.filepath}")
+        print(f"🔤 Language: {result.language}")
+        print(f"📏 LOC: {result.loc}")
+        print(f"📏 SLOC: {result.sloc}")
         
         qoc_sloc_ratio = result.total_qoc / result.sloc if result.sloc > 0 else 0
         
-        self.console.print(f"[bold magenta]⚡ Quanta of Code (QOC):[/bold magenta] {result.total_qoc:.1f}")
-        self.console.print(f"[bold yellow]🌳 AST Nodes:[/bold yellow] {result.ast_nodes}")
-        self.console.print(f"[bold red]📊 Efficiency Ratio (QOC/SLOC):[/bold red] {qoc_sloc_ratio:.2f}")
+        print(f"⚡ Quanta of Code (QOC): {result.total_qoc:.1f}")
+        print(f"🌳 AST Nodes: {result.ast_nodes}")
+        print(f"📊 Efficiency Ratio (QOC/SLOC): {qoc_sloc_ratio:.2f}")
         
         if detailed and result.node_stats:
-            self.console.print("\n[bold]🔍 Detailed AST Node Analysis:[/bold]")
-            
-            table = Table()
-            table.add_column("Node Type", style="cyan")
-            table.add_column("Count", style="magenta", justify="right")
-            table.add_column("Weight", style="green", justify="right")
-            table.add_column("Total Weight", style="yellow", justify="right")
-            table.add_column("Percentage", style="blue", justify="right")
+            print("\n🔍 Detailed AST Node Analysis:")
+            print("=" * 80)
+            print(f"{'Node Type':<30} {'Count':<8} {'Weight':<8} {'Total Weight':<12} {'Percentage':<10}")
+            print("=" * 80)
             
             # Sort nodes by total weight (descending)
             sorted_nodes = sorted(result.node_stats.items(), 
@@ -266,20 +264,12 @@ class QOCAnalyzer:
             
             for node_type, node_info in sorted_nodes:
                 percentage = (node_info.total_weight / result.total_qoc * 100) if result.total_qoc > 0 else 0
-                table.add_row(
-                    node_type,
-                    str(node_info.count),
-                    f"{node_info.weight:.1f}",
-                    f"{node_info.total_weight:.1f}",
-                    f"{percentage:.1f}%"
-                )
-            
-            self.console.print(table)
+                print(f"{node_type:<30} {node_info.count:<8} {node_info.weight:<8.1f} {node_info.total_weight:<12.1f} {percentage:<10.1f}%")
     
     def print_summary(self, results: List[QOCResult]):
         """Print analysis summary"""
         if not results:
-            self.console.print("[yellow]No analysis results to display[/yellow]")
+            print("⚠️  No analysis results to display")
             return
         
         total_files = len(results)
@@ -299,44 +289,26 @@ class QOCAnalyzer:
             language_stats[lang]['sloc'] += result.sloc
             language_stats[lang]['loc'] += result.loc
         
-        # Create summary panel
-        summary_text = f"""
-[bold cyan]Total Files:[/bold cyan] {total_files:,}
-[bold magenta]Total QOC:[/bold magenta] {total_qoc:,.1f}
-[bold blue]Total LOC:[/bold blue] {total_loc:,}
-[bold green]Total SLOC:[/bold green] {total_sloc:,}
-[bold yellow]Total AST Nodes:[/bold yellow] {total_ast_nodes:,}
-[bold red]Average Efficiency Ratio:[/bold red] {total_qoc/total_sloc:.2f}
-        """
-        
-        panel = Panel(
-            summary_text.strip(),
-            title="📊 QOC Analysis Summary",
-            border_style="bright_blue"
-        )
-        self.console.print(panel)
+        # Display summary
+        print("=" * 80)
+        print("📊 QOC Analysis Summary")
+        print("=" * 80)
+        print(f"Total Files: {total_files:,}")
+        print(f"Total QOC: {total_qoc:,.1f}")
+        print(f"Total LOC: {total_loc:,}")
+        print(f"Total SLOC: {total_sloc:,}")
+        print(f"Total AST Nodes: {total_ast_nodes:,}")
+        print(f"Average Efficiency Ratio: {total_qoc/total_sloc:.2f}")
+        print("=" * 80)
         
         # Language distribution
         if len(language_stats) > 1:
-            self.console.print("\n[bold]🌍 Language Distribution:[/bold]")
-            
-            lang_table = Table()
-            lang_table.add_column("Language", style="cyan")
-            lang_table.add_column("Files", style="magenta", justify="right")
-            lang_table.add_column("QOC", style="yellow", justify="right")
-            lang_table.add_column("LOC", style="blue", justify="right")
-            lang_table.add_column("SLOC", style="green", justify="right")
-            lang_table.add_column("Percentage", style="red", justify="right")
+            print("\n🌍 Language Distribution:")
+            print("=" * 80)
+            print(f"{'Language':<12} {'Files':<8} {'QOC':<12} {'LOC':<8} {'SLOC':<8} {'Percentage':<10}")
+            print("=" * 80)
             
             for lang, stats in sorted(language_stats.items(), key=lambda x: x[1]['count'], reverse=True):
                 percentage = (stats['count'] / total_files) * 100
-                lang_table.add_row(
-                    lang.capitalize(),
-                    str(stats['count']),
-                    f"{stats['qoc']:.1f}",
-                    str(stats['loc']),
-                    str(stats['sloc']),
-                    f"{percentage:.1f}%"
-                )
-            
-            self.console.print(lang_table) 
+                print(f"{lang.capitalize():<12} {stats['count']:<8} {stats['qoc']:<12.1f} {stats['loc']:<8} {stats['sloc']:<8} {percentage:<10.1f}%")
+            print("=" * 80) 
